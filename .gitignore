@@ -23,6 +23,9 @@ release/
 # Logs
 *.log
 
+# Word list raw downloads (regenerable, large)
+scripts/raw/
+
 # Keystore (NEVER commit signing keys)
 *.jks
 *.keystore

@@ -1,9 +1,12 @@
 package com.workplat.englishpulish.data.repo
 
+import androidx.room.withTransaction
+import com.workplat.englishpulish.data.db.AppDatabase
 import com.workplat.englishpulish.data.db.ReviewStateDao
 import com.workplat.englishpulish.data.db.ReviewStateEntity
 import com.workplat.englishpulish.data.db.WordDao
 import com.workplat.englishpulish.data.db.WordEntity
+import com.workplat.englishpulish.data.preload.PreloadSource
 import com.workplat.englishpulish.domain.text.TextParser
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
@@ -18,8 +21,10 @@ sealed interface AddResult {
 
 @Singleton
 class WordRepository @Inject constructor(
+    private val database: AppDatabase,
     private val wordDao: WordDao,
     private val reviewStateDao: ReviewStateDao,
+    private val preloadSource: PreloadSource,
 ) {
     fun observeAll(): Flow<List<WordEntity>> = wordDao.observeAll()
 
@@ -45,62 +50,68 @@ class WordRepository @Inject constructor(
             createdAt = now,
             deletedAt = null,
         )
-        wordDao.insertAll(listOf(word))
-        reviewStateDao.upsertAll(
-            listOf(
-                ReviewStateEntity(
-                    wordId = id,
-                    stability = 0.0,
-                    difficulty = 0.0,
-                    lastReviewAt = null,
-                    dueAt = now,
-                    state = 0,
-                    lapses = 0,
-                    reps = 0,
+        database.withTransaction {
+            wordDao.insertAll(listOf(word))
+            reviewStateDao.upsertAll(
+                listOf(
+                    ReviewStateEntity(
+                        wordId = id,
+                        stability = 0.0,
+                        difficulty = 0.0,
+                        lastReviewAt = null,
+                        dueAt = now,
+                        state = 0,
+                        lapses = 0,
+                        reps = 0,
+                    )
                 )
             )
-        )
+        }
         return AddResult.Added(wordId = id, lemma = lemma)
     }
 
+    /**
+     * Populate the library from bundled preload.json the first time the app runs.
+     * No-op once the table is non-empty. Both inserts run in a single transaction
+     * so the ~6000-row seed lands as one disk write.
+     */
     suspend fun seedIfEmpty() {
         if (wordDao.count() > 0) return
+        val entries = preloadSource.load()
         val now = System.currentTimeMillis()
-        val sample = listOf(
-            Triple("abandon", "v.", "放弃；抛弃"),
-            Triple("ability", "n.", "能力；才能"),
-            Triple("abroad", "adv.", "在国外；到国外"),
-            Triple("absence", "n.", "缺席；不在"),
-            Triple("absolute", "adj.", "绝对的；完全的"),
-        )
-        val words = sample.map { (lemma, pos, def) ->
-            WordEntity(
-                id = UUID.randomUUID().toString(),
-                lemma = lemma,
-                phonetic = null,
-                partOfSpeech = pos,
-                definitionZh = def,
-                exampleEn = null,
-                exampleZh = null,
-                source = "seed",
+
+        val words = ArrayList<WordEntity>(entries.size)
+        val states = ArrayList<ReviewStateEntity>(entries.size)
+
+        entries.forEach { e ->
+            val id = UUID.randomUUID().toString()
+            words += WordEntity(
+                id = id,
+                lemma = e.lemma,
+                phonetic = e.phonetic,
+                partOfSpeech = e.partOfSpeech,
+                definitionZh = e.definitionZh,
+                exampleEn = e.exampleEn,
+                exampleZh = e.exampleZh,
+                source = "preload-${e.level}",
                 createdAt = now,
                 deletedAt = null,
             )
+            states += ReviewStateEntity(
+                wordId = id,
+                stability = 0.0,
+                difficulty = 0.0,
+                lastReviewAt = null,
+                dueAt = now,
+                state = 0,
+                lapses = 0,
+                reps = 0,
+            )
         }
-        wordDao.insertAll(words)
-        reviewStateDao.upsertAll(
-            words.map {
-                ReviewStateEntity(
-                    wordId = it.id,
-                    stability = 0.0,
-                    difficulty = 0.0,
-                    lastReviewAt = null,
-                    dueAt = now,
-                    state = 0,
-                    lapses = 0,
-                    reps = 0,
-                )
-            }
-        )
+
+        database.withTransaction {
+            wordDao.insertAll(words)
+            reviewStateDao.upsertAll(states)
+        }
     }
 }
