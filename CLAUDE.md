@@ -1,31 +1,60 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project
+
+Android app for personal English vocabulary learning. Single-user, no backend, local SQLite via Room. Architecture and product decisions are tracked in conversation, not in extra docs.
+
 ## Commands
 
-Build with the Gradle wrapper (no system Gradle install required):
+- Build debug APK: `./gradlew :app:assembleDebug` (output: `app/build/outputs/apk/debug/app-debug.apk`)
+- Compile only (faster check): `./gradlew :app:compileDebugKotlin`
+- Install on connected device: `./gradlew :app:installDebug`
+- Run unit tests (when added): `./gradlew :app:testDebugUnitTest`
+- Single test: `./gradlew :app:testDebugUnitTest --tests com.workplat.englishpulish.SomeTest`
 
-- Run the app: `./gradlew bootRun`
-- Build a jar: `./gradlew build` (output under `build/libs/`)
-- Run all tests: `./gradlew test`
-- Run a single test class: `./gradlew test --tests com.workplat.starter.english_pulish.EnglishPulishApplicationTests`
-- Run a single test method: `./gradlew test --tests 'com.workplat.starter.english_pulish.EnglishPulishApplicationTests.contextLoads'`
-- Build an OCI image: `./gradlew bootBuildImage`
+## Environment
 
-Tests use JUnit Platform (`useJUnitPlatform()` in `build.gradle`).
+- Java 21 (Microsoft OpenJDK), Android SDK at `~/Library/Android/sdk`
+- Installed: build-tools 36.1.0, platforms android-36 — `compileSdk = 36`, `buildToolsVersion = "36.1.0"` are pinned to what's local because the SDK manager cannot fetch other revisions from this network
+- `minSdk = 34`, `targetSdk = 36`
+- `local.properties` holds `sdk.dir` and is gitignored
+
+## Network / build quirks (important)
+
+- The global `~/.gradle/gradle.properties` contains a broken proxy config (empty host, port 80). The project's `gradle.properties` explicitly blanks out `systemProp.{http,https}.proxy{Host,Port}` to force direct connections. Do not remove these overrides.
+- `settings.gradle.kts` prefers Aliyun mirrors before Google/Maven Central — Google Maven is reachable but slow/intermittent from this network.
+- `ksp.useKSP2=false` is required. KSP2 + Hilt 2.52 throws "unexpected jvm signature V". Stay on KSP1 until Hilt ≥ 2.54 is adopted.
 
 ## Architecture
 
-Spring Boot 4.0.6 project on Java 21 (toolchain pinned in `build.gradle`). The codebase is currently the Spring Initializr skeleton:
+Single-module Android app, MVVM + Repository, Jetpack Compose UI, Hilt DI.
 
-- Entry point: `src/main/java/com/workplat/starter/english_pulish/EnglishPulishApplication.java` — single `@SpringBootApplication` class. Component scan root is `com.workplat.starter.english_pulish`; new packages must live under it to be auto-discovered.
-- Config: `src/main/resources/application.properties` (only `spring.application.name` is set so far).
+```
+app/src/main/java/com/workplat/englishpulish/
+├── EnglishPulishApp.kt         @HiltAndroidApp entry
+├── MainActivity.kt             single Activity host
+├── data/
+│   ├── db/                     Room: entities + DAOs + AppDatabase
+│   └── repo/                   repositories (data ↔ ViewModel boundary)
+├── di/                         Hilt @Module providers
+└── ui/
+    ├── theme/                  Material 3 theme (minimal, tool-feel)
+    └── words/                  WordListScreen + ViewModel (v0.1 acceptance surface)
+```
 
-The starters wired in `build.gradle` define the intended capabilities — when adding features, follow these conventions:
+Data model (Room v1):
 
-- `spring-boot-starter-webmvc` — Servlet-stack MVC (not WebFlux). Use `@RestController` / `@Controller`, blocking handlers.
-- `spring-boot-starter-restclient` — outbound HTTP via `RestClient` (the Spring 6+ replacement for `RestTemplate`); prefer it over `RestTemplate`/`WebClient`.
-- `spring-boot-starter-security` — present by default, so every new endpoint is authenticated unless a `SecurityFilterChain` bean opens it. Expect to add a security config before exposing public routes.
-- `spring-boot-starter-quartz` — scheduled jobs go through Quartz (`Job` + `JobDetail`/`Trigger` beans), not `@Scheduled`.
-- Lombok is on the annotation processor path; `@Data`, `@Slf4j`, etc. are available in main and test sources.
-- `spring-boot-devtools` is `developmentOnly` — automatic restart works under `bootRun` but is excluded from the packaged jar.
+- `words` — lemma is unique, soft-delete via `deletedAt`, UUID string id (sync-friendly)
+- `review_states` — 1:1 with `words`, holds FSRS state (stability, difficulty, dueAt, state). Indexed on `dueAt` for "due today" queries
+- `review_logs` — append-only history of every rating; powers the future "vocabulary profile" feature. **Do not prune** — this is the differentiation fuel
+
+Schema snapshots export to `app/schemas/` (KSP arg). Future migrations should be added with `addMigrations(...)` on `Room.databaseBuilder`.
+
+## Conventions
+
+- All IDs are `String` UUIDs, not auto-increment Long — required for future device sync without ID collisions
+- All timestamps are `Long` epoch millis (UTC) — no `Instant`/`LocalDateTime` at the Room layer
+- ViewModels use `StateFlow` exposed via `stateIn(viewModelScope, WhileSubscribed(5_000), …)`; Compose collects with `collectAsStateWithLifecycle()`
+- Repositories are `@Singleton`, DAOs are unscoped, `AppDatabase` is `@Singleton`
+- FSRS algorithm (when added) lives under `domain/fsrs/` as pure functions — must be unit-testable without Android dependencies
