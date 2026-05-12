@@ -75,14 +75,28 @@ private fun shortSourceLabel(source: String): String = when (source) {
     else -> source
 }
 
+@Composable
+private fun ReviewEntryButton(dueCount: Int, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        Text(if (dueCount > 0) "今日复习 $dueCount 词" else "开始今日学习")
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WordListScreen(
+    onReviewClick: () -> Unit,
     viewModel: WordListViewModel = hiltViewModel(),
 ) {
     val words = viewModel.words.collectAsLazyPagingItems()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
     val count by viewModel.filteredCount.collectAsStateWithLifecycle()
+    val dueCount by viewModel.todayDueCount.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     LaunchedEffect(Unit) {
@@ -113,6 +127,7 @@ fun WordListScreen(
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            ReviewEntryButton(dueCount = dueCount, onClick = onReviewClick)
             SearchField(
                 query = filter.query,
                 onQueryChange = viewModel::setQuery,

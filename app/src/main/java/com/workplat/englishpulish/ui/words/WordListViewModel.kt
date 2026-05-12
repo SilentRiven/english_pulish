@@ -6,6 +6,7 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import com.workplat.englishpulish.data.db.WordEntity
 import com.workplat.englishpulish.data.repo.AddResult
+import com.workplat.englishpulish.data.repo.ReviewRepository
 import com.workplat.englishpulish.data.repo.WordFilter
 import com.workplat.englishpulish.data.repo.WordRepository
 import com.workplat.englishpulish.tts.TtsManager
@@ -30,6 +31,7 @@ import javax.inject.Inject
 @HiltViewModel
 class WordListViewModel @Inject constructor(
     private val repository: WordRepository,
+    private val reviewRepository: ReviewRepository,
     private val tts: TtsManager,
 ) : ViewModel() {
 
@@ -50,6 +52,9 @@ class WordListViewModel @Inject constructor(
         .debounce { f -> if (f.query.isEmpty()) 0L else QUERY_DEBOUNCE_MS }
         .distinctUntilChanged()
         .flatMapLatest { repository.observeFilteredCount(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    val todayDueCount: StateFlow<Int> = reviewRepository.observeTodayDueCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     private val _events = Channel<String>(Channel.BUFFERED)
