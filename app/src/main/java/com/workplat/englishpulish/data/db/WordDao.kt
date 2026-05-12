@@ -20,4 +20,7 @@ interface WordDao {
 
     @Query("SELECT * FROM words WHERE id = :id LIMIT 1")
     suspend fun findById(id: String): WordEntity?
+
+    @Query("SELECT * FROM words WHERE lemma = :lemma AND deletedAt IS NULL LIMIT 1")
+    suspend fun findByLemma(lemma: String): WordEntity?
 }

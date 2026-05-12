@@ -1,3 +1,9 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.EnglishPulish" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.EnglishPulish.Transparent" parent="android:Theme.Translucent.NoTitleBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
 </resources>
