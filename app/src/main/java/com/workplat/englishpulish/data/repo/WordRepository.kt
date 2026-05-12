@@ -1,5 +1,8 @@
 package com.workplat.englishpulish.data.repo
 
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
 import androidx.room.withTransaction
 import com.workplat.englishpulish.data.db.AppDatabase
 import com.workplat.englishpulish.data.db.ReviewStateDao
@@ -19,6 +22,16 @@ sealed interface AddResult {
     data object Invalid : AddResult
 }
 
+/**
+ * Filter applied to the word browser page. Empty [sources] means "no source filter"
+ * (show all). [query] is matched as a case-insensitive prefix on lemma — empty
+ * string matches every row.
+ */
+data class WordFilter(
+    val query: String = "",
+    val sources: Set<String> = emptySet(),
+)
+
 @Singleton
 class WordRepository @Inject constructor(
     private val database: AppDatabase,
@@ -29,6 +42,22 @@ class WordRepository @Inject constructor(
     fun observeAll(): Flow<List<WordEntity>> = wordDao.observeAll()
 
     suspend fun count(): Int = wordDao.count()
+
+    fun pager(filter: WordFilter): Flow<PagingData<WordEntity>> =
+        Pager(
+            config = PagingConfig(
+                pageSize = PAGE_SIZE,
+                initialLoadSize = PAGE_SIZE * 2,
+                enablePlaceholders = false,
+            ),
+            pagingSourceFactory = {
+                wordDao.pagingSource(
+                    queryPrefix = filter.query.trim().lowercase(),
+                    sources = filter.sources.toList(),
+                    sourcesEmpty = filter.sources.isEmpty(),
+                )
+            },
+        ).flow
 
     suspend fun addFromShare(rawLemma: String): AddResult {
         val lemma = TextParser.normalize(rawLemma)
@@ -113,5 +142,9 @@ class WordRepository @Inject constructor(
             wordDao.insertAll(words)
             reviewStateDao.upsertAll(states)
         }
+    }
+
+    companion object {
+        private const val PAGE_SIZE = 40
     }
 }
