@@ -16,6 +16,20 @@ interface WordDao {
     @Query("SELECT COUNT(*) FROM words WHERE deletedAt IS NULL")
     suspend fun count(): Int
 
+    @Query(
+        """
+        SELECT COUNT(*) FROM words
+        WHERE deletedAt IS NULL
+          AND lemma LIKE :queryPrefix || '%'
+          AND (:sourcesEmpty OR source IN (:sources))
+        """
+    )
+    fun observeFilteredCount(
+        queryPrefix: String,
+        sources: List<String>,
+        sourcesEmpty: Boolean,
+    ): Flow<Int>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(words: List<WordEntity>)
 

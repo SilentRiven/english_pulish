@@ -43,6 +43,13 @@ class WordRepository @Inject constructor(
 
     suspend fun count(): Int = wordDao.count()
 
+    fun observeFilteredCount(filter: WordFilter): Flow<Int> =
+        wordDao.observeFilteredCount(
+            queryPrefix = filter.query.trim().lowercase(),
+            sources = filter.sources.toList(),
+            sourcesEmpty = filter.sources.isEmpty(),
+        )
+
     fun pager(filter: WordFilter): Flow<PagingData<WordEntity>> =
         Pager(
             config = PagingConfig(
@@ -59,7 +66,11 @@ class WordRepository @Inject constructor(
             },
         ).flow
 
-    suspend fun addFromShare(rawLemma: String): AddResult {
+    suspend fun addOne(
+        rawLemma: String,
+        definition: String = "",
+        source: String = "manual",
+    ): AddResult {
         val lemma = TextParser.normalize(rawLemma)
         if (lemma.length < 2) return AddResult.Invalid
 
@@ -72,10 +83,10 @@ class WordRepository @Inject constructor(
             lemma = lemma,
             phonetic = null,
             partOfSpeech = null,
-            definitionZh = "",
+            definitionZh = definition.trim(),
             exampleEn = null,
             exampleZh = null,
-            source = "share",
+            source = source,
             createdAt = now,
             deletedAt = null,
         )
@@ -98,6 +109,9 @@ class WordRepository @Inject constructor(
         }
         return AddResult.Added(wordId = id, lemma = lemma)
     }
+
+    suspend fun addFromShare(rawLemma: String): AddResult =
+        addOne(rawLemma, source = "share")
 
     /**
      * Populate the library from bundled preload.json the first time the app runs.
